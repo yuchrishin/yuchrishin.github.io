@@ -1,1 +1,0 @@
-# yuchrishin.github.io
