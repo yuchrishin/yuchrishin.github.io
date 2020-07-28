@@ -1,0 +1,209 @@
+---
+title: "DS6306"
+author: "Yucheol Shin"
+date: "07/20/2020"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Rshiny Test
+This is a test of an RShiny app in RMarkdown
+
+```{r echo = FALSE}
+library(shiny)
+library(ggplot2)
+library(tidyr)
+library(plyr)
+library(dplyr)
+library(class)
+library(caret)
+library(e1071)
+library("RColorBrewer")
+
+beers = read.csv("Beers.csv", header = TRUE)
+breweries = read.csv("Breweries.csv", header = TRUE)
+
+colnames(beers)[5] = "Brew_ID"
+fullData = merge(beers, breweries, by = "Brew_ID")
+
+cleanData = fullData %>% filter(!is.na(ABV) & !is.na(IBU))
+state = sort(unique(cleanData$State))
+state = c("All State", state)
+
+ui <- fluidPage(
+
+  titlePanel("Case Study 1"),
+  
+    sidebarPanel(
+      
+      sliderInput(inputId = "bins",
+                  label = "Number of bins:",
+                  min = 10,
+                  max = 70,
+                  value = 40),
+      
+      
+      selectInput("plotSelect", label = h3("Plot Selection"), 
+                    choices = list("Histogram" = "Histogram", "Boxplot" = "Boxplot"), 
+                    selected = 1),
+      
+      selectInput("stateSelect", label = h3("State Selection"), 
+                    choices = c(state), 
+                    selected = 1),
+      
+      selectInput("scatterSelect", label = h3("Display Linear Regression"), 
+                    choices = list("No" = "No", "Yes" = "Yes"), 
+                    selected = 1),
+      
+      sliderInput(inputId = "kValue",
+                  label = "Value of K:",
+                  min = 1,
+                  max = 35,
+                  value = 5),
+      
+      hr(),
+      
+      fluidRow(column(3, verbatimTextOutput("value")))
+    ),
+    
+    mainPanel(
+      plotOutput(outputId = "ibuPlot"),
+      plotOutput(outputId = "abvPlot"),
+      plotOutput(outputId = "scatterPlot"),
+      plotOutput(outputId = "knnPlot")
+    )
+)
+
+
+server <- function(input, output) {
+
+  output$ibuPlot <- renderPlot({
+
+    isEmptyRow = TRUE
+    if(input$stateSelect != "All State") {
+      temp <- cleanData %>% filter(cleanData$State == input$stateSelect)
+      x <- temp$IBU
+      if(nrow(temp) <= 1) {
+        isEmptyRow = FALSE
+      }
+    } else {
+      x <- cleanData$IBU  
+    }    
+        
+    if(input$plotSelect == "Histogram" & isEmptyRow)
+    {
+      bins <- seq(min(x), max(x), length.out = input$bins + 1)
+      
+      hist(x, breaks = bins, col = "#75AADB", border = "white",
+           xlab = "International Bitterness Units (IBU)",
+           main = paste("Histogram of IBU for", input$stateSelect))
+    }
+    
+    if(input$plotSelect == "Boxplot")
+    {
+      boxplot(x, col="#75AADB",border = "black",
+           xlab = "International Bitterness Units (IBU)",
+           main = paste("Boxplot of IBU for", input$stateSelect))
+    }
+  })
+
+  output$abvPlot <- renderPlot({
+    
+    isEmptyRow = TRUE
+    if(input$stateSelect != "All State") {
+      temp <- cleanData %>% filter(cleanData$State == input$stateSelect)
+      x <- temp$ABV
+      if(nrow(temp) <= 1) {
+        isEmptyRow = FALSE
+      }
+    } else {
+      x <- cleanData$ABV
+    }        
+    
+    if(input$plotSelect == "Histogram" & isEmptyRow)
+    {
+      bins <- seq(min(x), max(x), length.out = input$bins + 1)
+      
+      hist(x, breaks = bins, col = "#75AADB", border = "white",
+           xlab = "Alcohol by Bolume (ABV)",
+           main = paste("Histogram of ABV for", input$stateSelect))
+    }
+    
+    if(input$plotSelect == "Boxplot")
+    {
+      boxplot(x, col="#75AADB",border = "black",
+           xlab = "Alcohol by Bolume (ABV)",
+           main = paste("Boxplot of ABV for", input$stateSelect))
+    }
+  })
+  
+  output$scatterPlot <- renderPlot({
+    theme_set(theme_bw())  # pre-set the bw theme.
+
+    if(input$stateSelect != "All State") {
+      dataToDisplay <- cleanData %>% filter(cleanData$State == input$stateSelect)
+    }else {
+      dataToDisplay <- cleanData
+    }  
+    
+    if(input$scatterSelect == "Yes") {
+      g <- ggplot(dataToDisplay, aes(IBU, ABV))
+      g + geom_point(color="#75AADB") +
+        geom_smooth(method="lm", se=F, color="black") + 
+        labs(y="ABV", 
+          x="IBU", 
+          title= paste("Scatter Plot: ABV vs IBU with Linear Regression line for", input$stateSelect))
+    }
+    else {
+      g <- ggplot(dataToDisplay, aes(IBU, ABV))
+      g + geom_point(color="#75AADB") +
+        labs(y="ABV", 
+          x="IBU", 
+          title= paste("Scatter Plot: ABV vs IBU for", input$stateSelect))
+    }
+  })
+  
+  output$knnPlot <- renderPlot({
+    set.seed(4)
+    filterData = cleanData %>% filter(grepl("Ale", Style) | grepl("IPA", Style))
+    filterData$Style[grepl("Ale", filterData$Style)] = "Ale"
+    filterData$Style[grepl("IPA", filterData$Style)] = "IPA"
+    filterData$Style = as.factor(filterData$Style)
+    
+    splitPerc = .70
+    trainIndices = sample(1:dim(filterData)[1],round(splitPerc * dim(filterData)[1]))
+    train = filterData[trainIndices,]
+    test = filterData[-trainIndices,]
+    fit = knn(train[,c(4,5)],test[,c(4,5)],train$Style, k=input$kValue)
+    
+    k6DF = data.frame(test, predicted = fit)
+    
+    k6DFBoundary = data.frame(x = k6DF$ABV, 
+                          y = k6DF$IBU, 
+                          predicted = k6DF$predicted)
+    
+    find_hull = function(df) df[chull(df$x, df$y), ]
+    boundary = ddply(k6DFBoundary, .variables = "predicted", .fun = find_hull)
+    
+    test$Actual = as.character(test$Style)
+    test$Actual = paste("Actual_", test$Actual)
+    
+    title <- paste0("KNN Cluster Plot with k =", input$kValue)
+    
+    ggplot() + 
+      geom_point(data=k6DF,aes(ABV, IBU, color=predicted, fill=predicted), size = 5) + 
+      geom_polygon(data = boundary, aes(x,y, color=predicted, fill=predicted), alpha = 0.5)+
+      geom_point(aes(ABV, IBU, color=Style), data=test) + ggtitle(title) 
+  })
+  
+}
+
+
+shinyApp(ui, server)
+
+```
+

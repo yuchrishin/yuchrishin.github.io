@@ -1,0 +1,23 @@
+---
+title: "DS6306"
+output: html_document
+---
+
+# Yucheol Shin
+
+### A picture
+
+### From:
+Dallas, TX
+
+### Interest: 
+Deep Learning
+DLP
+  
+### Work:
+TCS 2015-2019
+Cognizant 2019-Present
+
+### Schools:
+UCSB 2010-2015
+SMU 2019-Present
